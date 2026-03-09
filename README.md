@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Álbum Familiar
 
-## Getting Started
+Álbum Familiar es una aplicación web moderna diseñada para que familias de todas partes del mundo puedan organizar, compartir y preservar sus recuerdos (fotos y videos) en un espacio digital privado y seguro.
 
-First, run the development server:
+## Características Principales
+- **Multiusuario y Roles:** Creación de familias completas, donde cada integrante puede tener su cuenta.
+- **Gestión de Álbumes:** Creación de álbumes personalizados para agrupar recuerdos de eventos especiales (vacaciones, cumpleaños, etc.).
+- **Subida de Archivos:** Comparte fotos y videos fácilmente.
+- **Interacción Social Privada:** Sistema completo de comentarios en cada foto o video.
+- **Diseño Premium y Accesible:** Interfaz moderna (Vanilla CSS, Glassmorphism, Responsive) amigable para todas las edades, desde abuelos hasta nietos.
+- **Privacidad y Seguridad:** Autenticación robusta y aislamiento de datos por familia.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Tecnologías y Stack
+- **Frontend y Backend:** Next.js 15 (App Router, Server Actions)
+- **Base de Datos:** Prisma ORM + SQLite (fácilmente escalable a PostgreSQL en producción cambiando la configuración)
+- **Autenticación:** NextAuth.js (Auth.js v5)
+- **Diseño:** Vanilla CSS puro con custom properties, sin frameworks restrictivos, priorizando el rendimiento y la personalización.
+- **Lenguaje:** TypeScript estricto.
+
+## Estructura de Proyecto
+```
+/src
+  /actions     # Server Actions (auth, media, álbumes, comentarios)
+  /app         # Next.js App Router (páginas públicas y dashboard privado)
+  /components  # Componentes reutilizables e interactivos de UI (Cliente)
+  /lib         # Utilidades generales (Instancia de Prisma)
+  /styles      # Sistema de diseño central (no usado en layout si es global, pero disponible)
+  /types       # Definiciones de TypeScript customizadas
+/prisma        # Esquema de la base de datos (schema.prisma)
+/public        # Archivos estáticos y directorio temporal de uploads (MVP local)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Configuración y Ejecución Local
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **Instalar dependencias:**
+   ```bash
+   npm install
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+2. **Configurar Base de Datos local:**
+   El proyecto utiliza SQLite por defecto durante desarrollo para facilitar las pruebas.
+   ```bash
+   npx prisma db push
+   npx prisma generate
+   ```
 
-## Learn More
+3. **Variables de Entorno:**
+   Revisa el archivo `.env` asegurándote de tener:
+   ```
+   DATABASE_URL="file:./dev.db"
+   NEXTAUTH_URL="http://localhost:3000"
+   NEXTAUTH_SECRET="cualquier-texto-largo-aleatorio"
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+4. **Correr el Proyecto:**
+   ```bash
+   npm run build
+   npm start
+   # o para desarrollo interactivo: npm run dev
+   ```
+   Abre [http://localhost:3000](http://localhost:3000).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Recomendaciones de Evolución Futura
+Para un despliegue en producción real, se recomienda:
+1. Cambiar la `DATABASE_URL` en el `.env` para apuntar a un servidor **PostgreSQL** (ej: Supabase, Neon).
+2. Cambiar la estrategia de subida de archivos (mockeada local en `public/uploads`) por una integración S3 u otro proveedor en la nube como Cloudinary o AWS, modificando `src/actions/media.ts`.
+3. Agregar recuperación de contraseñas por correo usando un servicio SMTP y NextAuth.
