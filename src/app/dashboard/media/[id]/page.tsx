@@ -44,7 +44,7 @@ export default async function MediaPage({ params }: { params: Promise<{ id: stri
         </Link>
       </div>
 
-      <div className="media-viewer-layout" style={{ display: "grid", gap: "2rem", alignItems: "start" }}>
+      <div className="media-viewer-layout">
         {/* Main Content / Viewer */}
         <div style={{ width: "100%" }}>
           <div className="glass-panel" style={{ padding: "1rem", borderRadius: "16px", position: "relative" }}>
@@ -114,17 +114,6 @@ export default async function MediaPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
       </div>
-
-      <style jsx>{`
-        .media-viewer-layout {
-          grid-template-columns: 1.5fr 1fr;
-        }
-        @media (max-width: 900px) {
-          .media-viewer-layout {
-            grid-template-columns: 1fr;
-          }
-        }
-      `}</style>
     </div>
   )
 }

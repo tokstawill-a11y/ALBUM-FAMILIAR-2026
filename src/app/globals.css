@@ -246,3 +246,16 @@ button, a {
 .action-card:active {
   transform: scale(0.95);
 }
+
+.media-viewer-layout {
+  display: grid;
+  gap: 2rem;
+  align-items: start;
+  grid-template-columns: 1.5fr 1fr;
+}
+
+@media (max-width: 900px) {
+  .media-viewer-layout {
+    grid-template-columns: 1fr;
+  }
+}
