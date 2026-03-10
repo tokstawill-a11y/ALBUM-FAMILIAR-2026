@@ -72,3 +72,61 @@ export async function registerFamilyAction(prevState: any, formData: FormData) {
 export async function logoutAction() {
   await signOut({ redirectTo: "/" })
 }
+
+import { sendPasswordResetEmail } from "@/lib/mail"
+import { randomBytes } from "crypto"
+
+export async function forgotPasswordAction(prevState: any, formData: FormData) {
+  const email = formData.get("email") as string
+
+  if (!email) return { error: "El correo es requerido." }
+
+  const user = await prisma.user.findUnique({ where: { email } })
+  if (!user) {
+    // Return success even if user not found for security reasons
+    return { success: "Si el correo está registrado, recibirás un enlace de recuperación." }
+  }
+
+  const token = randomBytes(32).toString("hex")
+  const expires = new Date(Date.now() + 3600 * 1000) // 1 hour
+
+  await prisma.passwordResetToken.upsert({
+    where: { email_token: { email, token } },
+    update: { token, expires },
+    create: { email, token, expires }
+  })
+
+  const mailRes = await sendPasswordResetEmail(email, token)
+  if (mailRes.error) return { error: mailRes.error }
+
+  return { success: "Si el correo está registrado, recibirás un enlace de recuperación." }
+}
+
+export async function resetPasswordAction(prevState: any, formData: FormData) {
+  const token = formData.get("token") as string
+  const password = formData.get("password") as string
+
+  if (!token || !password) return { error: "Token y contraseña son requeridos." }
+
+  const resetToken = await prisma.passwordResetToken.findUnique({
+    where: { token }
+  })
+
+  if (!resetToken || resetToken.expires < new Date()) {
+    return { error: "El enlace ha expirado o es inválido." }
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10)
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { email: resetToken.email },
+      data: { password: hashedPassword }
+    }),
+    prisma.passwordResetToken.delete({
+      where: { id: resetToken.id }
+    })
+  ])
+
+  return { success: "Contraseña actualizada correctamente. Ya puedes iniciar sesión." }
+}

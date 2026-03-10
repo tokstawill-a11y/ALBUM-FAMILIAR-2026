@@ -64,6 +64,6 @@ export async function deleteFromDrive(fileId: string) {
 }
 
 export function getDrivePublicUrl(fileId: string) {
-  // Direct link for images/videos in Drive
-  return `https://drive.google.com/uc?id=${fileId}`;
+  // Point to our local proxy to avoid Drive direct access issues
+  return `/api/media/drive/${fileId}`;
 }

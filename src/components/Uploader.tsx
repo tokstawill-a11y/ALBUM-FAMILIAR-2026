@@ -8,63 +8,73 @@ interface UploaderProps {
   onSuccess?: () => void;
 }
 
+interface UploadStatus {
+  id: string;
+  name: string;
+  progress: number;
+  status: 'pending' | 'uploading' | 'success' | 'error';
+  error?: string;
+}
+
 export default function Uploader({ albumId, onSuccess }: UploaderProps) {
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploads, setUploads] = useState<UploadStatus[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const startUpload = useCallback(async (file: File) => {
-    if (!file) return;
-    
-    // Basic validation
-    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
-      setError("Solo se permiten imágenes y videos.");
-      return;
+  const processFiles = useCallback(async (fileList: FileList | File[]) => {
+    const newFiles = Array.from(fileList).filter(file => 
+      file.type.startsWith('image/') || file.type.startsWith('video/')
+    );
+
+    if (newFiles.length === 0) return;
+
+    const newUploads: UploadStatus[] = newFiles.map(file => ({
+      id: Math.random().toString(36).substring(7),
+      name: file.name,
+      progress: 0,
+      status: 'pending'
+    }));
+
+    setUploads(prev => [...prev, ...newUploads]);
+
+    // Process one by one for stability, but we update the UI for all
+    for (let i = 0; i < newFiles.length; i++) {
+        const file = newFiles[i];
+        const statusItem = newUploads[i];
+
+        setUploads(prev => prev.map(u => u.id === statusItem.id ? { ...u, status: 'uploading', progress: 10 } : u));
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const res = await uploadMediaAction(albumId, formData);
+            if (res?.error) {
+                setUploads(prev => prev.map(u => u.id === statusItem.id ? { ...u, status: 'error', error: res.error } : u));
+            } else {
+                setUploads(prev => prev.map(u => u.id === statusItem.id ? { ...u, status: 'success', progress: 100 } : u));
+            }
+        } catch (err) {
+            setUploads(prev => prev.map(u => u.id === statusItem.id ? { ...u, status: 'error', error: "Error de conexión" } : u));
+        }
     }
 
-    setIsUploading(true);
-    setError(null);
-    setUploadProgress(10); // Start progress
-
-    const formData = new FormData();
-    formData.append("file", file);
+    // After all are done, trigger refresh if at least one succeeded
+    // onSuccess is usually just router.refresh()
+    onSuccess?.();
     
-    try {
-      // Simulate progress since Server Actions don't support native progress yet
-      const interval = setInterval(() => {
-        setUploadProgress(prev => (prev < 90 ? prev + 10 : prev));
-      }, 300);
-
-      const res = await uploadMediaAction(albumId, formData);
-      
-      clearInterval(interval);
-      setUploadProgress(100);
-
-      if (res?.error) {
-        setError(res.error);
-        setUploadProgress(0);
-      } else {
-        // Short delay to show 100% before closing
-        setTimeout(() => {
-          onSuccess?.();
-        }, 500);
-      }
-    } catch (err) {
-      setError("Error inesperado en la subida.");
-      setUploadProgress(0);
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }
+    // Clear successes after a few seconds
+    setTimeout(() => {
+        setUploads(prev => prev.filter(u => u.status === 'error' || u.status === 'uploading'));
+    }, 5000);
   }, [albumId, onSuccess]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) startUpload(file);
+    if (e.target.files) {
+        processFiles(e.target.files);
+        e.target.value = ""; // Reset
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -79,82 +89,107 @@ export default function Uploader({ albumId, onSuccess }: UploaderProps) {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) startUpload(file);
+    if (e.dataTransfer.files) processFiles(e.dataTransfer.files);
   };
+
+  const activeUploads = uploads.filter(u => u.status === 'uploading' || u.status === 'pending').length;
+  const isBusy = activeUploads > 0;
 
   return (
     <div style={{ width: "100%" }}>
+      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+        <button 
+           className="btn-primary"
+           onClick={() => fileInputRef.current?.click()}
+           disabled={isBusy}
+           style={{ flex: 1, minWidth: "200px", padding: "1rem" }}
+        >
+          📁 Seleccionar Archivos
+        </button>
+        <button 
+           className="btn-secondary"
+           onClick={() => cameraInputRef.current?.click()}
+           disabled={isBusy}
+           style={{ flex: 1, minWidth: "200px", padding: "1rem" }}
+        >
+          📸 {typeof window !== 'undefined' && window.innerWidth < 768 ? 'Usar Cámara' : 'Tomar Foto'}
+        </button>
+      </div>
+
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         style={{
           border: `2px dashed ${isDragging ? "var(--secondary)" : "var(--primary)"}`,
-          background: isDragging ? "var(--primary-light)" : "rgba(255,255,255,0.05)",
+          background: isDragging ? "var(--primary-light)" : "rgba(255,255,255,0.03)",
           borderRadius: "var(--radius-lg)",
-          padding: "3rem 2rem",
+          padding: "2rem",
           textAlign: "center",
           transition: "var(--transition)",
-          cursor: isUploading ? "wait" : "pointer",
+          cursor: isBusy ? "wait" : "pointer",
           position: "relative",
-          overflow: "hidden"
+          marginBottom: "1rem"
         }}
-        onClick={() => !isUploading && fileInputRef.current?.click()}
+        onClick={() => !isBusy && fileInputRef.current?.click()}
       >
         <input 
           type="file" 
+          multiple
           accept="image/*,video/*" 
           style={{ display: "none" }} 
           ref={fileInputRef}
           onChange={handleFileChange}
-          disabled={isUploading}
+          disabled={isBusy}
+        />
+        <input 
+          type="file" 
+          accept="image/*" 
+          capture="environment"
+          style={{ display: "none" }} 
+          ref={cameraInputRef}
+          onChange={handleFileChange}
+          disabled={isBusy}
         />
 
-        <div style={{ scale: isDragging ? "1.1" : "1", transition: "var(--transition)" }}>
-          <div style={{ fontSize: "3.5rem", marginBottom: "1rem" }}>
-            {isUploading ? "⌛" : isDragging ? "🎯" : "📤"}
+        <div style={{ scale: isDragging ? "1.05" : "1", transition: "var(--transition)" }}>
+          <div style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>
+            {isDragging ? "🎯" : "➕"}
           </div>
-          <h4 style={{ marginBottom: "0.5rem", color: "var(--text-main)" }}>
-            {isUploading ? "Subiendo tu recuerdo..." : isDragging ? "¡Suéltalo aquí!" : "Haz clic o arrastra un archivo"}
-          </h4>
-          <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-            Imágenes o Videos (Max 10MB)
+          <p style={{ color: "var(--text-muted)", fontSize: "0.95rem" }}>
+            {isDragging ? "¡Suéltalos ahora!" : "O arrastra tus carpetas y archivos aquí"}
           </p>
         </div>
-
-        {/* Progress bar */}
-        {isUploading && (
-          <div style={{
-            position: "absolute",
-            bottom: 0,
-            left: 0,
-            height: "4px",
-            background: "linear-gradient(90deg, var(--primary), var(--secondary))",
-            width: `${uploadProgress}%`,
-            transition: "width 0.3s ease"
-          }} />
-        )}
       </div>
 
-      {error && (
-        <div style={{ 
-          marginTop: "1rem", 
-          padding: "0.75rem", 
-          borderRadius: "var(--radius-sm)", 
-          background: "var(--error)", 
-          color: "white",
-          fontSize: "0.85rem",
-          textAlign: "center"
-        }}>
-          ⚠️ {error}
+      {/* Upload Status List */}
+      {uploads.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          {uploads.map(u => (
+            <div key={u.id} className="glass-panel" style={{ 
+                padding: "0.75rem 1rem", 
+                display: "flex", 
+                alignItems: "center", 
+                justifyContent: "space-between",
+                fontSize: "0.85rem",
+                borderLeft: `4px solid ${
+                    u.status === 'success' ? '#10b981' : 
+                    u.status === 'error' ? '#ef4444' : 
+                    'var(--primary)'
+                }`
+            }}>
+              <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: "1rem" }}>
+                {u.name}
+              </div>
+              <div style={{ fontWeight: 600 }}>
+                {u.status === 'uploading' && `🚀 ${u.progress}%`}
+                {u.status === 'pending' && `⌛ Pendiente`}
+                {u.status === 'success' && `✅ Listo`}
+                {u.status === 'error' && `⚠️ Error`}
+              </div>
+            </div>
+          ))}
         </div>
-      )}
-
-      {isUploading && (
-        <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
-          Estamos procesando tu archivo, no cierres esta ventana.
-        </p>
       )}
     </div>
   );

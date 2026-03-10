@@ -12,8 +12,14 @@ export default function LoginPage() {
         
         <LoginForm />
         
-        <p style={{ textAlign: "center", marginTop: "2rem", color: "var(--text-muted)" }}>
+        <p style={{ textAlign: "center", marginTop: "2rem", color: "var(--text-muted)", fontSize: "0.9rem" }}>
           ¿Tu familia aún no tiene un Álbum? <Link href="/register" style={{ color: "var(--primary)", fontWeight: 600 }}>Créalos aquí</Link>
+        </p>
+
+        <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.85rem" }}>
+          <Link href="/forgot-password" style={{ color: "var(--text-muted)", textDecoration: "none" }}>
+            ¿Olvidaste tu contraseña?
+          </Link>
         </p>
       </div>
 
