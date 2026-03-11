@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import CommentForm from "@/components/CommentForm";
 import DeleteMediaButton from "@/components/DeleteMediaButton";
+import { sanitizeUrl } from "@/lib/utils";
 
 export default async function MediaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -54,9 +55,9 @@ export default async function MediaPage({ params }: { params: Promise<{ id: stri
               minHeight: "300px", overflow: "hidden", boxShadow: "inset 0 0 20px rgba(0,0,0,0.5)"
             }}>
               {media.type === "IMAGE" ? (
-                <img src={media.url} alt="Recuerdo familiar" style={{ maxWidth: "100%", maxHeight: "75vh", objectFit: "contain" }} />
+                <img src={sanitizeUrl(media.url)} alt="Recuerdo familiar" style={{ maxWidth: "100%", maxHeight: "75vh", objectFit: "contain" }} />
               ) : (
-                <video src={media.url} controls style={{ maxWidth: "100%", maxHeight: "75vh" }} />
+                <video src={sanitizeUrl(media.url)} controls style={{ maxWidth: "100%", maxHeight: "75vh" }} />
               )}
             </div>
             
@@ -72,7 +73,7 @@ export default async function MediaPage({ params }: { params: Promise<{ id: stri
               </div>
               
               <div style={{ display: "flex", gap: "0.75rem" }}>
-                <a href={media.url} download className="btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.85rem" }}>
+                <a href={sanitizeUrl(media.url)} download className="btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.85rem" }}>
                   ⬇
                 </a>
                 {canDelete && <DeleteMediaButton mediaId={media.id} albumId={media.albumId} />}

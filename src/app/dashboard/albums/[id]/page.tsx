@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import Uploader from "@/components/Uploader";
 import DeleteAlbumButton from "@/components/DeleteAlbumButton";
+import { sanitizeUrl } from "@/lib/utils";
 
 export default async function AlbumPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -100,7 +101,7 @@ export default async function AlbumPage({ params }: { params: Promise<{ id: stri
                     overflow: "hidden", cursor: "pointer", transition: "var(--transition)", position: "relative"
                 }}>
                   <div style={{ height: "250px", backgroundColor: "#000", position: "relative" }}>
-                    <img src={m.url} alt="Recuerdo familiar" style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.5s ease" }} />
+                    <img src={sanitizeUrl(m.url)} alt="Recuerdo familiar" style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.5s ease" }} />
                     {m.type === "VIDEO" && (
                         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.3)" }}>
                             <span style={{ fontSize: "3rem" }}>▶️</span>

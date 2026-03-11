@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import Uploader from "./Uploader";
+import FamilyMembers from "./FamilyMembers";
+import Timeline from "./Timeline";
+import BannerCarousel from "./BannerCarousel";
 import { importFromUrlAction } from "@/actions/media";
+import { sanitizeUrl } from "@/lib/utils";
 
 interface Media {
   id: string;
@@ -11,7 +15,7 @@ interface Media {
   type: string;
   albumId: string;
   createdAt: string;
-  album: { id: string; title: string };
+  album: { id: string; title: string; description: string | null };
   uploadedBy: { id: string; name: string | null; image: string | null };
   _count: { comments: number };
 }
@@ -35,21 +39,18 @@ interface FamilyMember {
 }
 
 const CATEGORIES = [
-  { id: "all", label: "Todos", icon: "🏠" },
-  { id: "albums", label: "Álbumes", icon: "📂" },
-  { id: "photos", label: "Fotos", icon: "🖼️" },
-  { id: "videos", label: "Videos", icon: "🎬" },
+  { id: "all", label: "Todas", icon: "fa-star" },
+  { id: "albums", label: "Álbumes", icon: "fa-layer-group" },
+  { id: "photos", label: "Fotos", icon: "fa-image" },
+  { id: "videos", label: "Videos", icon: "fa-film" },
 ];
 
 export default function DashboardClient({
   albums,
   recentMedia,
   familyMembers,
-  totalPhotos,
-  totalVideos,
   currentUserId,
   currentUserName,
-  familyId,
 }: {
   albums: Album[];
   recentMedia: Media[];
@@ -63,32 +64,15 @@ export default function DashboardClient({
   const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  
-  // Modals & Popups
-  const [showUploader, setShowUploader] = useState(false);
   const [showUrlModal, setShowUrlModal] = useState(false);
-  const [showFilterMenu, setShowFilterMenu] = useState(false);
-  const [showGoogleDriveMsg, setShowGoogleDriveMsg] = useState(false);
-  
-  // Form states
-  const [selectedAlbumForAction, setSelectedAlbumForAction] = useState(
-    albums[0]?.id || ""
-  );
+  const [selectedAlbumForAction, setSelectedAlbumForAction] = useState(albums[0]?.id || "");
   const [importUrl, setImportUrl] = useState("");
   const [isImporting, setIsImporting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Filter settings
-  const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
-  const [filterOwner, setFilterOwner] = useState<"all" | "mine">("all");
-
-  const albumCarouselRef = useRef<HTMLDivElement>(null);
-
   const filteredMedia = useMemo(() => {
     let result = [...recentMedia];
     
-    // Search
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(m => 
@@ -97,84 +81,33 @@ export default function DashboardClient({
       );
     }
 
-    // Category
     if (activeCategory === "photos") result = result.filter(m => m.type === "IMAGE");
     if (activeCategory === "videos") result = result.filter(m => m.type === "VIDEO");
-
-    // Member
     if (selectedMember) result = result.filter(m => m.uploadedBy.id === selectedMember);
 
-    // Filter Owner
-    if (filterOwner === "mine") result = result.filter(m => m.uploadedBy.id === currentUserId);
-
-    // Sort
-    result.sort((a, b) => {
-      const dateA = new Date(a.createdAt).getTime();
-      const dateB = new Date(b.createdAt).getTime();
-      return sortBy === "newest" ? dateB - dateA : dateA - dateB;
-    });
-
+    result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return result;
-  }, [recentMedia, activeCategory, selectedMember, searchQuery, sortBy, filterOwner, currentUserId]);
+  }, [recentMedia, activeCategory, selectedMember, searchQuery]);
 
-  const filteredAlbums = useMemo(() => {
-    let result = [...albums];
-
-    // Search
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(a => 
-        a.title.toLowerCase().includes(q) || 
-        (a.description || "").toLowerCase().includes(q)
-      );
-    }
-
-    // Filter Owner
-    if (filterOwner === "mine") result = result.filter(a => a.createdById === currentUserId);
-
-    // Sort
-    result.sort((a, b) => {
-      const dateA = new Date(a.createdAt).getTime();
-      const dateB = new Date(b.createdAt).getTime();
-      return sortBy === "newest" ? dateB - dateA : dateA - dateB;
-    });
-
-    return result;
-  }, [albums, searchQuery, sortBy, filterOwner, currentUserId]);
-
-  const showAlbums = activeCategory === "all" || activeCategory === "albums";
-  const showMediaList = activeCategory === "all" || activeCategory === "photos" || activeCategory === "videos";
-
-  const featuredAlbum = albums.find((a) => a._count.media > 0) || albums[0];
-
-  const timeline = useMemo(() => {
-    const groups: Record<string, Media[]> = {};
-    recentMedia.forEach((m) => {
-      const date = new Date(m.createdAt);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(m);
-    });
-    return Object.entries(groups)
-      .sort(([a], [b]) => b.localeCompare(a))
-      .slice(0, 6);
-  }, [recentMedia]);
+  const carouselItems = useMemo(() => {
+    return albums.filter(a => a.media.length > 0).slice(0, 3).map(a => ({
+      id: a.id,
+      title: a.title,
+      description: a.description || "Un hermoso recuerdo compartido por todos.",
+      image: sanitizeUrl(a.media[0].url),
+      albumTitle: "Favorito de la Familia"
+    }));
+  }, [albums]);
 
   const handleUrlImport = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!importUrl) return;
-    if (!selectedAlbumForAction) {
-       setActionError("Por favor selecciona un álbum primero.");
-       return;
-    }
-    
+    if (!importUrl || !selectedAlbumForAction) return;
     setIsImporting(true);
     setActionError(null);
     try {
       const res = await importFromUrlAction(selectedAlbumForAction, importUrl);
-      if (res?.error) {
-        setActionError(res.error);
-      } else {
+      if (res?.error) setActionError(res.error);
+      else {
         setShowUrlModal(false);
         setImportUrl("");
       }
@@ -185,374 +118,217 @@ export default function DashboardClient({
     }
   };
 
-  const scrollCarousel = (direction: "left" | "right") => {
-    if (albumCarouselRef.current) {
-      const itemWidth = albumCarouselRef.current.offsetWidth * 0.8;
-      const scrollAmount = direction === "left" ? -itemWidth : itemWidth;
-      albumCarouselRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
-    }
-  };
-
   return (
-    <div style={{ paddingBottom: "4rem", position: "relative" }}>
-      {/* Action Popups / Modals (Sin cambios, ya son responsivos por glass-panel) */}
-      
-      {showUploader && (
-        <div className="modal-overlay" onClick={() => setShowUploader(false)} style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100,
-          display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)"
-        }}>
-          <div className="glass-panel" onClick={e => e.stopPropagation()} style={{
-            padding: "2.5rem", width: "550px", maxWidth: "95vw"
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2rem" }}>
-              <h2 className="title-gradient">Subir Recuerdo</h2>
-              <button onClick={() => setShowUploader(false)} style={{ fontSize: "1.5rem" }}>✕</button>
-            </div>
-            {albums.length === 0 ? (
-               <div style={{ textAlign: "center", padding: "2rem" }}>
-                 <p style={{ marginBottom: "1.5rem" }}>Primero necesitas crear un álbum.</p>
-                 <Link href="/dashboard/albums/new" className="btn-primary">Crear mi primer Álbum</Link>
-               </div>
-            ) : (
-              <>
-                <div style={{ marginBottom: "1.5rem" }}>
-                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600 }}>Seleccionar Álbum</label>
-                  <select 
-                    value={selectedAlbumForAction} 
-                    onChange={e => setSelectedAlbumForAction(e.target.value)}
-                    style={{ width: "100%", padding: "0.75rem" }}
-                  >
-                    {albums.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
-                  </select>
+    <div className="bg-amber-50 min-h-screen">
+      {/* App Header */}
+      <header className="bg-gradient-to-r from-amber-600 to-amber-800 text-white shadow-lg sticky top-0 z-50">
+        <div className="container py-4 flex justify-between items-center">
+          <Link href="/dashboard" className="flex items-center space-x-3 hover:scale-105 transition">
+            <i className="fas fa-camera-retro text-3xl"></i>
+            <h1 className="text-2xl font-black tracking-tight" style={{ color: "white" }}>Álbum Familiar</h1>
+          </Link>
+          <div className="flex items-center space-x-6">
+             <div className="relative group cursor-pointer hidden md:block">
+               <i className="fas fa-bell text-xl"></i>
+               <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center font-bold">2</span>
+             </div>
+             <div className="flex items-center space-x-3 bg-amber-700/50 px-4 py-2 rounded-full border border-white/20">
+                <span className="font-bold text-sm">{currentUserName}</span>
+                <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-800 text-xs font-black">
+                   {currentUserName?.[0]?.toUpperCase()}
                 </div>
-                <Uploader albumId={selectedAlbumForAction} onSuccess={() => setShowUploader(false)} />
-              </>
-            )}
+             </div>
           </div>
         </div>
-      )}
+      </header>
 
+      <main className="container py-8">
+        
+        {/* Section 1: Categories & Search */}
+        <section className="mb-10 flex flex-col md:flex-row gap-4 items-center justify-between">
+           <div className="flex overflow-x-auto pb-2 gap-3 w-full md:w-auto scrollbar-hide">
+              {CATEGORIES.map(c => (
+                <button 
+                  key={c.id} 
+                  onClick={() => setActiveCategory(c.id)}
+                  className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold transition-all whitespace-nowrap shadow-sm border-2 ${
+                    activeCategory === c.id ? "bg-amber-600 text-white border-amber-600" : "bg-white text-amber-800 border-amber-100 hover:bg-amber-100"
+                  }`}
+                >
+                  <i className={`fas ${c.icon}`}></i>
+                  {c.label}
+                </button>
+              ))}
+           </div>
+           
+           <div className="relative w-full md:w-[400px]">
+             <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-amber-400"></i>
+             <input 
+               type="text" 
+               placeholder="Buscar recuerdos..." 
+               value={searchQuery}
+               onChange={(e) => setSearchQuery(e.target.value)}
+               className="w-full pl-12 pr-4 py-3 border-2 border-amber-100 rounded-full focus:ring-4 focus:ring-amber-200 outline-none font-bold"
+             />
+           </div>
+        </section>
+
+        {/* Section 2: Uploader Grid */}
+        <Uploader albumId={selectedAlbumForAction} />
+
+        {/* Section 3: High-Visibility Filter for Seniors */}
+        <section className="mb-10 flex flex-wrap gap-4 items-center bg-amber-100/50 p-6 rounded-2xl border-2 border-amber-100">
+           <div className="flex items-center gap-3">
+             <i className="fas fa-filter text-amber-600 text-xl font-bold"></i>
+             <span className="font-extrabold text-amber-800">Ver recuerdos:</span>
+           </div>
+           <div className="flex flex-wrap gap-3">
+             <button className="bg-white px-5 py-2 rounded-xl font-black text-xs text-amber-800 border-2 border-amber-200 shadow-sm">ORDENAR POR FECHA ↓</button>
+             <button className="bg-white px-5 py-2 rounded-xl font-black text-xs text-amber-800 border-2 border-amber-200 shadow-sm">MIS FOTOS</button>
+             {albums.length > 0 && (
+               <select 
+                 value={selectedAlbumForAction} 
+                 onChange={e => setSelectedAlbumForAction(e.target.value)}
+                 className="bg-white px-5 py-2 rounded-xl font-black text-xs text-amber-800 border-2 border-amber-200 shadow-sm outline-none"
+               >
+                 {albums.map(a => <option key={a.id} value={a.id}>ÁLBUM: {a.title.toUpperCase()}</option>)}
+               </select>
+             )}
+             <button 
+                onClick={() => setShowUrlModal(true)}
+                className="bg-amber-600 px-5 py-2 rounded-xl font-black text-xs text-white shadow-md hover:bg-amber-700 transition"
+             >
+                + IMPORTAR URL
+             </button>
+           </div>
+        </section>
+
+        {/* Section 4: Recent Photos Grid */}
+        <section className="mb-12">
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-3xl font-black text-amber-800 flex items-center gap-4">
+               <span className="w-12 h-1 bg-amber-600 rounded-full"></span>
+               Fotos Recientes
+            </h2>
+            <Link href="/dashboard/albums/new" className="hidden md:flex items-center gap-2 font-black text-amber-600 hover:text-amber-800 transition">
+               <i className="fas fa-plus-circle"></i> Nuevo Álbum
+            </Link>
+          </div>
+          
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+            {filteredMedia.slice(0, 10).map((media) => (
+              <Link 
+                href={`/dashboard/media/${media.id}`} 
+                key={media.id}
+                className="photo-card group bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-xl p-2"
+              >
+                <div className="relative aspect-square rounded-xl overflow-hidden mb-3">
+                  <img src={sanitizeUrl(media.url)} alt="Recuerdo" className="w-full h-full object-cover transition duration-500 group-hover:scale-110" />
+                  <div className="absolute top-2 right-2 bg-white/90 px-2 py-1 rounded-lg text-[10px] font-black text-amber-800 shadow-sm">
+                     {media.album.title.toUpperCase()}
+                  </div>
+                </div>
+                <div className="px-1 pb-2">
+                   <p className="text-sm font-black text-amber-900 truncate">{media.album.title}</p>
+                   <p className="text-[11px] font-bold text-amber-700/60 truncate flex items-center gap-1">
+                      <i className="fas fa-user-circle"></i> {media.uploadedBy.name}
+                   </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+
+          <div className="mt-12 text-center">
+             <button className="bg-amber-100 hover:bg-amber-200 text-amber-900 font-black py-4 px-10 rounded-full border-2 border-amber-200 shadow-sm transition-all transform hover:-translate-y-1">
+                VER TODAS LAS FOTOS
+             </button>
+          </div>
+        </section>
+
+        {/* Section 5: Highlight Carousel */}
+        <BannerCarousel items={carouselItems} />
+
+        {/* Section 6: Family Members */}
+        <FamilyMembers 
+           members={familyMembers} 
+           selectedMemberId={selectedMember} 
+           onSelectMember={setSelectedMember} 
+        />
+
+        {/* Section 7: Timeline View */}
+        <Timeline media={recentMedia} />
+
+      </main>
+
+      {/* Footer Branding */}
+      <footer className="bg-amber-950 text-white py-16">
+        <div className="container grid grid-cols-1 md:grid-cols-4 gap-12">
+            <div>
+              <div className="flex items-center space-x-3 mb-6">
+                <i className="fas fa-camera-retro text-4xl text-amber-500"></i>
+                <h2 className="text-3xl font-black text-white">Álbum<br/>Familiar</h2>
+              </div>
+              <p className="text-amber-200 font-medium leading-relaxed">
+                Organiza, comparte y preserva los momentos más valiosos de los tuyos. El lugar donde viven las memorias.
+              </p>
+            </div>
+            
+            <div>
+              <h4 className="font-black text-white text-lg mb-6 border-b-2 border-amber-800 pb-2">ENLACES</h4>
+              <ul className="space-y-3 font-bold text-amber-200/80">
+                <li><Link href="/dashboard" className="hover:text-white transition">Dashboard</Link></li>
+                <li><Link href="/dashboard/albums/new" className="hover:text-white transition">Crear Álbum</Link></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-black text-white text-lg mb-6 border-b-2 border-amber-800 pb-2">AYUDA</h4>
+              <p className="text-amber-200/60 text-sm mb-4">¿Tienes problemas con la cámara o subiendo fotos?</p>
+              <a href="mailto:ayuda@albumfamiliar.com" className="bg-amber-800 hover:bg-amber-700 text-white px-4 py-3 rounded-xl font-bold inline-block transition">
+                 📧 Contactar Soporte
+              </a>
+            </div>
+
+            <div>
+              <h4 className="font-black text-white text-lg mb-6 border-b-2 border-amber-800 pb-2">APP MÓVIL</h4>
+              <p className="text-amber-200/60 text-sm mb-4">Lleva el álbum contigo siempre en tu celular.</p>
+              <div className="flex gap-2">
+                 <button className="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold border border-white/10">App Store</button>
+                 <button className="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold border border-white/10">Play Store</button>
+              </div>
+            </div>
+        </div>
+        <div className="container mt-16 pt-8 border-t border-amber-900 text-center text-amber-500/50 text-sm font-bold">
+           © 2026 Álbum Familiar Interactivo · Hecho con ❤️ para la familia
+        </div>
+      </footer>
+
+      {/* URL Import Modal */}
       {showUrlModal && (
-        <div className="modal-overlay" onClick={() => setShowUrlModal(false)} style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100,
-          display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)"
-        }}>
-          <div className="glass-panel" onClick={e => e.stopPropagation()} style={{
-            padding: "2.5rem", width: "550px", maxWidth: "95vw"
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2rem" }}>
-              <h2 className="title-gradient">Importar desde URL</h2>
-              <button onClick={() => setShowUrlModal(false)} style={{ fontSize: "1.5rem" }}>✕</button>
+        <div className="fixed inset-0 bg-amber-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl border-4 border-amber-100">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-black text-amber-800">Importar Recuerdo</h2>
+              <button onClick={() => setShowUrlModal(false)} className="text-2xl text-amber-400 hover:text-amber-600 transition">✕</button>
             </div>
             <form onSubmit={handleUrlImport}>
-              <div style={{ marginBottom: "1.5rem" }}>
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600 }}>URL de la imagen o video</label>
-                <input 
-                  type="url" 
-                  placeholder="https://ejemplo.com/foto.jpg"
-                  required
-                  value={importUrl}
-                  onChange={e => setImportUrl(e.target.value)}
-                  style={{ width: "100%", padding: "0.75rem" }}
-                />
-              </div>
-              <div style={{ marginBottom: "1.5rem" }}>
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600 }}>Álbum destino</label>
-                <select 
-                  value={selectedAlbumForAction} 
-                  onChange={e => setSelectedAlbumForAction(e.target.value)}
-                  style={{ width: "100%", padding: "0.75rem" }}
-                >
-                  <option value="">Selecciona un álbum...</option>
-                  {albums.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
-                </select>
-              </div>
-              {actionError && <p style={{ color: "var(--error)", marginBottom: "1rem" }}>{actionError}</p>}
-              <button type="submit" className="btn-primary" style={{ width: "100%" }} disabled={isImporting}>
-                {isImporting ? "Importando..." : "Importar ahora"}
-              </button>
+               <div className="mb-6">
+                 <label className="block text-amber-900 font-bold mb-2">Pega el link de la foto</label>
+                 <input 
+                   type="url" required 
+                   placeholder="https://google.com/foto.jpg"
+                   value={importUrl} onChange={e => setImportUrl(e.target.value)}
+                   className="w-full px-4 py-3 border-2 border-amber-100 rounded-xl outline-none focus:border-amber-500 transition font-bold"
+                 />
+               </div>
+               {actionError && <p className="text-red-600 font-bold mb-4">⚠️ {actionError}</p>}
+               <button type="submit" disabled={isImporting} className="btn-primary w-full py-4 text-lg">
+                 {isImporting ? "Importando..." : "GUARDAR EN MI ÁLBUM"}
+               </button>
             </form>
           </div>
         </div>
       )}
-
-      {/* Header Actions - Optimizado para móvil (Stacking) */}
-      <div className="container" style={{ marginBottom: "2.5rem" }}>
-        <div className="glass-panel main-header-grid" style={{
-            padding: "2rem", display: "grid", gap: "2rem", alignItems: "center"
-        }}>
-          {/* Active Dropzone */}
-          <div
-            onClick={() => setShowUploader(true)}
-            className="dropzone-premium"
-            style={{
-              border: "2px dashed var(--primary)", borderRadius: "var(--radius-md)", padding: "3.5rem 2rem",
-              textAlign: "center", cursor: "pointer", background: "rgba(99, 102, 241, 0.05)",
-              transition: "var(--transition)", position: "relative"
-            }}
-          >
-            <div style={{ fontSize: "3.5rem", marginBottom: "1rem" }}>☁️</div>
-            <h3 className="title-gradient" style={{ marginBottom: "0.5rem" }}>Guarda un nuevo recuerdo</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.95rem" }}>Arrastra archivos aquí o haz clic</p>
-            <button className="btn-primary" style={{ marginTop: "1.5rem" }}>Seleccionar Archivos</button>
-          </div>
-
-          {/* Quick Action Capsules - Grid responsivo */}
-          <div className="quick-actions-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "1.25rem" }}>
-            <button className="glass-panel action-card" onClick={() => setShowUploader(true)} style={{ padding: "1.5rem", textAlign: "center" }}>
-              <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>📸</div>
-              <p style={{ fontWeight: 600, fontSize: "0.9rem" }}>Tomar foto</p>
-            </button>
-            <button className="glass-panel action-card" onClick={() => setShowUrlModal(true)} style={{ padding: "1.5rem", textAlign: "center" }}>
-              <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>🔗</div>
-              <p style={{ fontWeight: 600, fontSize: "0.9rem" }}>Importar URL</p>
-            </button>
-            <button className="glass-panel action-card" onClick={() => setShowGoogleDriveMsg(true)} style={{ padding: "1.5rem", textAlign: "center" }}>
-              <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>🌩️</div>
-              <p style={{ fontWeight: 600, fontSize: "0.9rem" }}>Google Drive</p>
-            </button>
-            <Link href="/dashboard/albums/new" className="glass-panel action-card" style={{ padding: "1.5rem", textAlign: "center", textDecoration: "none", color: "inherit" }}>
-              <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>📂</div>
-              <p style={{ fontWeight: 600, fontSize: "0.9rem" }}>Nuevo Álbum</p>
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      <style jsx>{`
-        .main-header-grid {
-          grid-template-columns: 1.2fr 1fr;
-        }
-        @media (max-width: 900px) {
-          .main-header-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-        @media (max-width: 480px) {
-          .quick-actions-grid {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
-
-      {/* Stats Section - Ya es auto-fit y funciona bien en móvil */}
-      <div className="container" style={{ marginBottom: "3rem" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "1.25rem" }}>
-          {[
-            { label: "Álbumes", val: albums.length, icon: "📂", color: "var(--primary)" },
-            { label: "Fotos", val: totalPhotos, icon: "🖼️", color: "var(--secondary)" },
-            { label: "Videos", val: totalVideos, icon: "🎬", color: "#10b981" },
-            { label: "Miembros", val: familyMembers.length, icon: "👨‍👩‍👧‍👦", color: "#f59e0b" },
-          ].map((s, i) => (
-            <div key={i} className="glass-panel" style={{ padding: "1.25rem", display: "flex", alignItems: "center", gap: "1rem" }}>
-              <div style={{ fontSize: "2rem", opacity: 0.8 }}>{s.icon}</div>
-              <div>
-                <p style={{ fontSize: "1.5rem", fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.val}</p>
-                <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 500 }}>{s.label}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Filter Bar - Optimizado para móvil */}
-      <div className="container" style={{ marginBottom: "2.5rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
-          {/* Categories - Scrollable en móvil */}
-          <div style={{ 
-            display: "flex", gap: "0.5rem", background: "rgba(255,255,255,0.05)", padding: "0.4rem", 
-            borderRadius: "var(--radius-full)", overflowX: "auto", maxWidth: "100%", scrollbarWidth: "none"
-          }}>
-            {CATEGORIES.map(c => (
-              <button 
-                key={c.id} 
-                onClick={() => setActiveCategory(c.id)}
-                style={{ 
-                  padding: "0.5rem 1.25rem", borderRadius: "var(--radius-full)", border: "none", cursor: "pointer",
-                  background: activeCategory === c.id ? "var(--primary)" : "transparent",
-                  color: activeCategory === c.id ? "white" : "var(--text-muted)",
-                  fontWeight: 600, transition: "var(--transition)", fontSize: "0.85rem", whiteSpace: "nowrap"
-                }}
-              >
-                {c.icon} {c.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Search & Actions */}
-          <div style={{ display: "flex", gap: "0.75rem", flex: 1, minWidth: "280px" }}>
-            <div style={{ position: "relative", flex: 1 }}>
-              <span style={{ position: "absolute", left: "1rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}>🔍</span>
-              <input 
-                type="text" 
-                placeholder="Busca..." 
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                style={{ width: "100%", padding: "0.75rem 1rem 0.75rem 2.5rem", borderRadius: "10px", fontSize: "0.9rem" }}
-              />
-            </div>
-
-            <button 
-              className={showFilterMenu ? "btn-primary" : "btn-secondary"}
-              onClick={() => setShowFilterMenu(!showFilterMenu)}
-              style={{ height: "100%", padding: "0 1rem", borderRadius: "10px" }}
-            >
-              🎚️
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Albums Carousel Section */}
-      {showAlbums && filteredAlbums.length > 0 && (
-        <div className="container" style={{ marginBottom: "4rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "1rem" }}>
-            <h2 style={{ fontSize: "1.75rem" }}>📂 Álbumes</h2>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button onClick={() => scrollCarousel("left")} className="btn-secondary" style={{ padding: "0.4rem", borderRadius: "50%" }}>←</button>
-              <button onClick={() => scrollCarousel("right")} className="btn-secondary" style={{ padding: "0.4rem", borderRadius: "50%" }}>→</button>
-            </div>
-          </div>
-          
-          <div 
-            ref={albumCarouselRef}
-            className="carousel-container"
-          >
-            {filteredAlbums.map(a => (
-              <div key={a.id} className="carousel-item">
-                <Link href={`/dashboard/albums/${a.id}`} style={{ textDecoration: "none", color: "inherit" }}>
-                  <div className="glass-panel album-card-premium" style={{ 
-                    overflow: "hidden", position: "relative", transition: "var(--transition)", height: "100%",
-                    border: a.createdById === currentUserId ? "1px solid var(--primary)" : "1px solid var(--border)"
-                  }}>
-                    <div style={{ 
-                      height: "180px", background: a.media[0] ? `url(${a.media[0].url}) center/cover` : "var(--primary-light)",
-                      display: "flex", alignItems: "center", justifyContent: "center", position: "relative"
-                    }}>
-                      {!a.media[0] && <span style={{ fontSize: "3rem", opacity: 0.2 }}>📁</span>}
-                      {a.createdById === currentUserId && (
-                        <div style={{ 
-                          position: "absolute", top: "10px", left: "10px", background: "var(--primary)", color: "white",
-                          padding: "0.3rem 0.7rem", borderRadius: "10px", fontSize: "0.7rem", fontWeight: 800
-                        }}>
-                          MÍO
-                        </div>
-                      )}
-                      <div style={{ 
-                        position: "absolute", bottom: "10px", right: "10px", background: "rgba(0,0,0,0.6)", 
-                        color: "white", padding: "0.2rem 0.6rem", borderRadius: "var(--radius-full)", fontSize: "0.75rem"
-                      }}>
-                        {a._count.media} 📸
-                      </div>
-                    </div>
-                    <div style={{ padding: "1.25rem" }}>
-                      <h3 style={{ fontSize: "1.1rem", marginBottom: "0.4rem" }}>{a.title}</h3>
-                      <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "1rem" }}>Por {a.createdBy.name}</p>
-                    </div>
-                  </div>
-                </Link>
-              </div>
-            ))}
-            
-            {/* Tarjeta para Crear Nuevo Álbum al final del carrusel */}
-            <div className="carousel-item">
-              <Link href="/dashboard/albums/new" style={{ textDecoration: "none", color: "inherit" }}>
-                <div className="glass-panel" style={{ 
-                  height: "100%", minHeight: "260px", display: "flex", flexDirection: "column", 
-                  alignItems: "center", justifyContent: "center", border: "2px dashed var(--border)", 
-                  color: "var(--text-muted)", textAlign: "center", padding: "1rem"
-                }}>
-                  <div style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>📂</div>
-                  <p style={{ fontWeight: 700 }}>+ Crear Álbum</p>
-                </div>
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Contenido Reciente y Family Section (Ya responsivos pero asegurando paddings) */}
-      
-      {/* Media Feed */}
-      {showMediaList && filteredMedia.length > 0 && (
-        <div className="container" style={{ marginBottom: "4rem" }}>
-          <h2 style={{ fontSize: "1.75rem", marginBottom: "1.5rem" }}>✨ Recuerdos Recientes</h2>
-          <div style={{ 
-            display: "grid", 
-            gridTemplateColumns: viewMode === "grid" ? "repeat(auto-fill, minmax(200px, 1fr))" : "1fr",
-            gap: "1.25rem" 
-          }}>
-            {filteredMedia.map(m => (
-              <Link href={`/dashboard/media/${m.id}`} key={m.id} style={{ textDecoration: "none", color: "inherit" }}>
-                <div className="glass-panel media-card-premium" style={{ 
-                   padding: "0.5rem", display: viewMode === "list" ? "flex" : "block", gap: "1rem", alignItems: "center"
-                }}>
-                  <div style={{ 
-                    height: viewMode === "grid" ? "180px" : "80px", width: viewMode === "list" ? "120px" : "100%",
-                    background: `url(${m.url}) center/cover`, borderRadius: "var(--radius-md)", position: "relative"
-                  }}>
-                    {m.type === "VIDEO" && (
-                    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.25)" }}>
-                      <span style={{ fontSize: "2rem" }}>▶️</span>
-                    </div>
-                    )}
-                  </div>
-                  <div style={{ flex: 1, padding: viewMode === "grid" ? "0.75rem 0.25rem" : 0 }}>
-                    <p style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: "0.15rem" }}>{m.album.title}</p>
-                    <p style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{m.uploadedBy.name} · {m._count.comments} 💬</p>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Family Section - Scrollable en móvil */}
-      <div className="container" style={{ marginBottom: "4rem" }}>
-        <h2 style={{ fontSize: "1.75rem", marginBottom: "1.5rem" }}>👨‍👩‍👧‍👦 La Familia</h2>
-        <div style={{ display: "flex", gap: "1rem", overflowX: "auto", paddingBottom: "1rem", scrollbarWidth: "none" }}>
-          {familyMembers.map(member => (
-            <button 
-              key={member.id} 
-              onClick={() => setSelectedMember(selectedMember === member.id ? null : member.id)}
-              className="glass-panel member-capsule"
-              style={{
-                flex: "0 0 160px", padding: "1.25rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem",
-                border: selectedMember === member.id ? "2px solid var(--primary)" : "1px solid var(--border)",
-                background: selectedMember === member.id ? "rgba(99, 102, 241, 0.1)" : "var(--surface)",
-                transition: "var(--transition)"
-              }}
-            >
-              <div style={{ 
-                width: "60px", height: "60px", borderRadius: "50%", background: member.image ? `url(${member.image}) center/cover` : "var(--primary-light)",
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem", fontWeight: 800, color: "white"
-              }}>
-                {!member.image && (member.name?.[0] || "?")}
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <p style={{ fontWeight: 700, fontSize: "0.9rem" }}>{member.name}</p>
-                <p style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{member._count.uploadedMedia} aportes</p>
-              </div>
-            </button>
-          ))}
-          
-          <button 
-            onClick={() => {
-              const shareUrl = `${window.location.origin}/register`;
-              const text = `¡Hola! Únete a nuestro Álbum Familiar para compartir fotos y recuerdos. Regístrate aquí: ${shareUrl}`;
-              window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-            }}
-            style={{ flex: "0 0 160px", background: "none", border: "none", padding: 0 }}
-          >
-            <div className="glass-panel" style={{ height: "100%", padding: "1.25rem", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.75rem", border: "2px dashed var(--border)", color: "var(--text-muted)" }}>
-              <div style={{ width: "60px", height: "60px", borderRadius: "50%", border: "2px dashed var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem" }}>+</div>
-              <p style={{ fontWeight: 600, fontSize: "0.9rem" }}>Invitar por WhatsApp</p>
-            </div>
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
