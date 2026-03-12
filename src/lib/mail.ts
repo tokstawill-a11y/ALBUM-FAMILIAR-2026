@@ -1,11 +1,21 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const getResend = () => {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn("RESEND_API_KEY is missing. Emails will not be sent.");
+    return null;
+  }
+  return new Resend(apiKey);
+};
 
 const domain = process.env.NEXTAUTH_URL || "https://album-familiar-2026.vercel.app";
 
 export const sendPasswordResetEmail = async (email: string, token: string) => {
   const resetLink = `${domain}/reset-password?token=${token}`;
+
+  const resend = getResend();
+  if (!resend) return { error: "Servicio de correo no configurado" };
 
   try {
     await resend.emails.send({
